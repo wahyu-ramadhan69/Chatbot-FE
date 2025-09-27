@@ -1,18 +1,160 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import React from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
 
+// ===== Simple text renderer (tanpa ReactMarkdown) =====
+const SimpleTextProcessor = ({ content }: { content: string }) => {
+  if (!content) return null;
+
+  // Normalisasi newline
+  let processed = content
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  const sections = processed.split(/\n\n+/).filter((s) => s.trim());
+
+  return (
+    <div className="space-y-4">
+      {sections.map((section, idx) => {
+        const trimmed = section.trim();
+        if (!trimmed) return null;
+
+        // Heading "##"
+        if (trimmed.startsWith("##")) {
+          const headingText = trimmed.replace(/^##\s*/, "");
+          return (
+            <div
+              key={idx}
+              className="text-base font-semibold text-indigo-700 border-b border-indigo-200 pb-2 mb-3"
+            >
+              {headingText}
+            </div>
+          );
+        }
+
+        // Numbered list "1.","2.",...
+        if (/^\d+\./.test(trimmed)) {
+          const parts = trimmed.split("\n").filter((p) => p.trim());
+          return (
+            <div key={idx} className="space-y-2">
+              {parts.map((part, pidx) => {
+                const t = part.trim();
+                if (!t) return null;
+
+                // Lettered "a.","b.",...
+                if (/^[a-z]\./i.test(t)) {
+                  return (
+                    <div
+                      key={pidx}
+                      className="ml-6 pl-3 py-2 border-l-3 border-indigo-300 bg-indigo-50 rounded-r"
+                    >
+                      <div
+                        className="text-sm text-gray-800 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: t
+                            .replace(
+                              /\*\*(.*?)\*\*/g,
+                              '<strong class="font-semibold text-indigo-800">$1</strong>'
+                            )
+                            .replace(
+                              /(https?:\/\/[^\s]+)/g,
+                              '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline break-all">$1</a>'
+                            ),
+                        }}
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={pidx}
+                    className="text-sm text-gray-800 leading-relaxed"
+                  >
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: t
+                          .replace(
+                            /\*\*(.*?)\*\*/g,
+                            '<strong class="font-semibold text-indigo-800">$1</strong>'
+                          )
+                          .replace(
+                            /(https?:\/\/[^\s]+)/g,
+                            '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline break-all">$1</a>'
+                          ),
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        // Lettered list yang langsung di awal
+        if (/^[a-z]\./i.test(trimmed)) {
+          const points = trimmed.split(/\n(?=[a-z]\.)/).filter((p) => p.trim());
+          return (
+            <div key={idx} className="space-y-2">
+              {points.map((pt, j) => (
+                <div
+                  key={j}
+                  className="ml-4 pl-3 py-2 border-l-2 border-indigo-300 bg-indigo-50 rounded-r"
+                >
+                  <div
+                    className="text-sm text-gray-800 leading-relaxed"
+                    dangerouslySetInnerHTML={{
+                      __html: pt
+                        .trim()
+                        .replace(
+                          /\*\*(.*?)\*\*/g,
+                          '<strong class="font-semibold text-indigo-800">$1</strong>'
+                        )
+                        .replace(
+                          /(https?:\/\/[^\s]+)/g,
+                          '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline break-all">$1</a>'
+                        ),
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        // Paragraph biasa
+        return (
+          <div key={idx} className="text-sm text-gray-800 leading-relaxed">
+            <div
+              dangerouslySetInnerHTML={{
+                __html: trimmed
+                  .replace(
+                    /\*\*(.*?)\*\*/g,
+                    '<strong class="font-semibold text-indigo-800">$1</strong>'
+                  )
+                  .replace(
+                    /(https?:\/\/[^\s]+)/g,
+                    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline break-all">$1</a>'
+                  )
+                  .replace(/\n/g, "<br/>"),
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ===== Chat Widget =====
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
@@ -41,12 +183,32 @@ export default function ChatWidget() {
     setMsg("");
     setLoading(true);
 
+    // ===== DEBUG START =====
+    const t0 = performance.now();
+    const debugChunks: string[] = [];
+    const debugLines: string[] = [];
+    const debugRequestId = Math.random().toString(36).slice(2);
+    console.groupCollapsed(
+      `%c[FE] /ask-stream request ${debugRequestId}`,
+      "color:#4f46e5;font-weight:bold;"
+    );
+    console.log("question:", userMsg.content);
+    // ===== DEBUG END =====
+
     try {
       const resp = await fetch("http://127.0.0.1:5000/ask-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: msg }),
+        body: JSON.stringify({ question: userMsg.content }),
       });
+
+      const beRequestId = resp.headers.get("X-Request-ID") || "n/a";
+      console.log("status:", resp.status, resp.statusText);
+      console.log("X-Request-ID:", beRequestId);
+      console.log(
+        "response headers:",
+        Object.fromEntries(resp.headers.entries())
+      );
 
       if (!resp.body) throw new Error("No stream body");
 
@@ -54,28 +216,44 @@ export default function ChatWidget() {
       const decoder = new TextDecoder("utf-8");
 
       let partialLine = "";
-      let buffer = ""; // 👉 penampung gabungan semua token
+      let finalText = ""; // ini yang akan tampil di UI
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
+        debugChunks.push(chunk); // raw chunk (debug)
+
         const lines = (partialLine + chunk).split("\n");
         partialLine = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
+          debugLines.push(line); // raw line (debug)
 
-            if (data === "[DONE]") {
-              console.log("FINAL STREAM:", buffer); // tampil utuh di console
+          if (!line.startsWith("data: ")) continue;
+
+          const payload = line.slice(6).trim();
+
+          // ---- Parser SSE JSON (server baru) ----
+          try {
+            const obj = JSON.parse(payload);
+
+            if (obj.type === "done") {
               setLoading(false);
+              const ms = Math.round(performance.now() - t0);
+              console.log(
+                "raw SSE lines (sample up to 50):",
+                debugLines.slice(0, 50)
+              );
+              console.log("raw chunks count:", debugChunks.length);
+              console.log("finalText (to UI):", finalText);
+              console.log("duration_ms:", ms);
+              console.groupEnd();
               return;
             }
 
-            if (data.startsWith("[ERROR]")) {
-              console.error("STREAM ERROR:", data);
+            if (obj.type === "error") {
               setLoading(false);
               setMessages((prev) => {
                 const updated = [...prev];
@@ -87,27 +265,82 @@ export default function ChatWidget() {
                 };
                 return updated;
               });
+              console.error("[FE] SSE ERROR payload:", obj);
+              console.groupEnd();
               return;
             }
 
-            // 👉 tambahkan ke buffer
-            buffer += data;
-
-            // update UI sekaligus dari buffer, bukan per token
+            if (obj.type === "chunk") {
+              const data: string = obj.content ?? "";
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastIndex = updated.length - 1;
+                if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+                  updated[lastIndex] = {
+                    ...updated[lastIndex],
+                    content: updated[lastIndex].content + data,
+                  };
+                }
+                return updated;
+              });
+              finalText += data;
+              continue;
+            }
+          } catch {
+            // ---- Fallback: server lama (plain text) ----
+            if (payload === "[DONE]") {
+              setLoading(false);
+              const ms = Math.round(performance.now() - t0);
+              console.log(
+                "raw SSE lines (sample up to 50):",
+                debugLines.slice(0, 50)
+              );
+              console.log("raw chunks count:", debugChunks.length);
+              console.log("finalText (to UI):", finalText);
+              console.log("duration_ms:", ms);
+              console.groupEnd();
+              return;
+            }
+            if (payload.startsWith("[ERROR]")) {
+              setLoading(false);
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastIndex = updated.length - 1;
+                updated[lastIndex] = {
+                  ...updated[lastIndex],
+                  content:
+                    "Maaf, terjadi kesalahan dalam memproses permintaan Anda.",
+                };
+                return updated;
+              });
+              console.error("[FE] SSE ERROR payload:", payload);
+              console.groupEnd();
+              return;
+            }
+            // plain chunk
             setMessages((prev) => {
               const updated = [...prev];
               const lastIndex = updated.length - 1;
               if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
                 updated[lastIndex] = {
                   ...updated[lastIndex],
-                  content: buffer,
+                  content: updated[lastIndex].content + payload,
                 };
               }
               return updated;
             });
+            finalText += payload;
           }
         }
       }
+
+      // Jika stream berakhir tanpa tanda "done"
+      setLoading(false);
+      console.warn(
+        "[FE] Stream ended without [DONE]. Final so far:",
+        finalText
+      );
+      console.groupEnd();
     } catch (err) {
       console.error("Stream error:", err);
       setLoading(false);
@@ -122,6 +355,7 @@ export default function ChatWidget() {
         }
         return updated;
       });
+      console.groupEnd();
     }
   };
 
@@ -169,7 +403,7 @@ export default function ChatWidget() {
               </button>
             </div>
 
-            {/* Chat Messages */}
+            {/* Messages */}
             <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50">
               {messages.length === 0 && (
                 <div className="text-center text-gray-500 py-8">
@@ -196,66 +430,14 @@ export default function ChatWidget() {
                     }`}
                   >
                     {m.role === "assistant" ? (
-                      <div className="text-sm leading-relaxed text-gray-800">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkBreaks]}
-                          components={{
-                            // Headers - hanya untuk ## heading
-                            h2: ({ children }) => (
-                              <h2 className="text-base font-light text-indigo-700 mb-3 mt-2">
-                                {children}
-                              </h2>
-                            ),
-                            // Paragraphs dengan line break yang proper
-                            p: ({ children }) => {
-                              // Convert children to string untuk analisis
-                              const textContent =
-                                React.Children.toArray(children).join("");
-
-                              // Cek apakah ini adalah point (a., b., c., 1., 2., dll)
-                              const isListItem = /^[a-z0-9]+\.\s/i.test(
-                                textContent
-                              );
-
-                              if (isListItem) {
-                                return (
-                                  <div className="mb-2 ml-4 pl-3 border-l-2 border-indigo-200 bg-gray-50 py-2 rounded-r">
-                                    {children}
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <div className="mb-2 whitespace-pre-line">
-                                  {children}
-                                </div>
-                              );
-                            },
-                            // Bold text - hanya untuk **text**
-                            strong: ({ children }) => (
-                              <span className="font-light text-indigo-800">
-                                {children}
-                              </span>
-                            ),
-                            // Links
-                            a: ({ href, children }) => (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 underline break-all"
-                              >
-                                {children}
-                              </a>
-                            ),
-                          }}
-                        >
-                          {m.content ||
-                            (loading && i === messages.length - 1
-                              ? "Mengetik..."
-                              : "")}
-                        </ReactMarkdown>
-                      </div>
+                      <SimpleTextProcessor
+                        content={
+                          m.content ||
+                          (loading && i === messages.length - 1
+                            ? "Mengetik..."
+                            : "")
+                        }
+                      />
                     ) : (
                       <p className="text-sm leading-relaxed">{m.content}</p>
                     )}
@@ -265,7 +447,7 @@ export default function ChatWidget() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Input Form */}
+            {/* Input */}
             <div className="border-t bg-white rounded-b-2xl">
               <form
                 onSubmit={(e) => {
