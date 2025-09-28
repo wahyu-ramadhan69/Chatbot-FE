@@ -60,7 +60,7 @@ export default function ChatWidget() {
     setLoading(true);
 
     try {
-      const resp = await fetch("https://be.chatmpp.site//ask-stream", {
+      const resp = await fetch("https://be.chatmpp.site/ask-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: userMsg.content }),
