@@ -1,29 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Send } from "lucide-react";
+import { X, Send, MessageCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import Image from "next/image";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
 
-// Komponen untuk menampilkan bubble message
+// Komponen bubble pesan
 const MessageBubble = ({ message }: { message: ChatMessage }) => {
   const isUser = message.role === "user";
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
       <div
-        className={`
-          max-w-[80%] px-4 py-2 rounded-2xl text-sm
-          ${
-            isUser
-              ? "bg-indigo-600 text-white rounded-br-md"
-              : "bg-white text-gray-800 border border-gray-200 rounded-bl-md shadow-sm"
-          }
-        `}
+        className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
+          isUser
+            ? "text-white rounded-br-md"
+            : "bg-white text-gray-800 border border-gray-200 rounded-bl-md shadow-sm"
+        }`}
+        style={isUser ? { backgroundColor: "#800000" } : {}}
       >
         <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
       </div>
@@ -72,7 +71,7 @@ export default function ChatWidget() {
       const decoder = new TextDecoder("utf-8");
 
       let partialLine = "";
-      let finalText = "";
+
 
       while (true) {
         const { done, value } = await reader.read();
@@ -121,27 +120,15 @@ export default function ChatWidget() {
                 }
                 return updated;
               });
-              finalText += data;
+
             }
           } catch {
-            // fallback untuk plain text
+
             if (payload === "[DONE]") {
               setLoading(false);
               return;
             }
-            if (payload.startsWith("[ERROR]")) {
-              setLoading(false);
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIndex = updated.length - 1;
-                updated[lastIndex] = {
-                  ...updated[lastIndex],
-                  content: "Maaf, terjadi kesalahan.",
-                };
-                return updated;
-              });
-              return;
-            }
+            
             setMessages((prev) => {
               const updated = [...prev];
               const lastIndex = updated.length - 1;
@@ -153,25 +140,15 @@ export default function ChatWidget() {
               }
               return updated;
             });
-            finalText += payload;
+
           }
         }
       }
     } catch (err) {
       console.error("Stream error:", err);
       setLoading(false);
-      setMessages((prev) => {
-        const updated = [...prev];
-        const lastIndex = updated.length - 1;
-        if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
-          updated[lastIndex] = {
-            ...updated[lastIndex],
-            content: "Maaf, terjadi kesalahan koneksi.",
-          };
-        }
-        return updated;
-      });
     }
+    
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -182,18 +159,28 @@ export default function ChatWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-[12px] right-[28px] z-50">
+      {/* Tombol chatbot */}
       {!open && (
         <motion.button
           onClick={() => setOpen(true)}
-          className="p-4 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-colors"
+          className="p-0 bg-transparent border-none shadow-none"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <MessageCircle className="h-6 w-6" />
+          <div className="relative w-[110px] h-[110px] drop-shadow-2xl">
+            <Image
+              src="/images/5.png"
+              alt="Chatbot"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
         </motion.button>
       )}
 
+      {/* Kotak chat */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -205,24 +192,49 @@ export default function ChatWidget() {
             className="relative w-[400px] h-[60vh] bg-white shadow-2xl rounded-2xl border border-gray-200 flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b bg-indigo-600 text-white rounded-t-2xl">
-              <div>
-                <h3 className="font-semibold text-sm">Mall Pelayanan Publik</h3>
-                <p className="text-xs text-indigo-100">Kota Bengkulu</p>
+            <div
+              className="flex items-center justify-between p-4 border-b rounded-t-2xl text-white"
+              style={{ backgroundColor: "#800000" }}
+            >
+              <div className="flex items-center gap-3">
+                <Image
+                  src="/images/harimau.png"
+                  alt="Logo Harimau"
+                  width={52}
+                  height={52}
+                  className="object-contain drop-shadow-md"
+                  priority
+                />
+                <div>
+                  <h3 className="font-semibold text-base leading-tight">
+                    Mall Pelayanan Publik
+                  </h3>
+                  <p className="text-xs opacity-90">Kota Bengkulu</p>
+                </div>
               </div>
               <button
                 onClick={() => setOpen(false)}
-                className="p-1 rounded-full hover:bg-indigo-700 transition-colors"
+                className="p-1 rounded-full transition-colors"
+                style={{ color: "#fff" }}
+                onMouseOver={(e) =>
+                  (e.currentTarget.style.backgroundColor = "#990000")
+                }
+                onMouseOut={(e) =>
+                  (e.currentTarget.style.backgroundColor = "transparent")
+                }
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Messages */}
+            {/* Area pesan */}
             <div className="flex-1 p-4 overflow-y-auto bg-gradient-to-b from-gray-50 to-gray-100">
               {messages.length === 0 && (
                 <div className="text-center text-gray-500 py-8">
-                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <MessageCircle
+                    className="h-8 w-8 mx-auto mb-2 opacity-50"
+                    style={{ color: "#800000" }}
+                  />
                   <p className="text-sm font-medium">Selamat datang!</p>
                   <p className="text-xs text-gray-400 mt-1">
                     Silakan tanya tentang layanan publik
@@ -279,13 +291,26 @@ export default function ChatWidget() {
                     onKeyPress={handleKeyPress}
                     placeholder="Tulis pesan Anda..."
                     disabled={loading}
-                    className="w-full border border-gray-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                    className="w-full border border-gray-300 rounded-full px-4 py-2 text-sm focus:outline-none disabled:opacity-50 placeholder-gray-400 text-black"
+                    style={{
+                      borderColor: "#800000",
+                      outlineColor: "#800000",
+                    }}
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={loading || !msg.trim()}
-                  className="p-2 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{
+                    backgroundColor: "#800000",
+                  }}
+                  onMouseOver={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#990000")
+                  }
+                  onMouseOut={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#800000")
+                  }
                 >
                   <Send className="h-4 w-4" />
                 </button>
